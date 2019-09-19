@@ -6,8 +6,10 @@ import java.util.stream.Collectors;
 import javax.validation.Valid;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 
+import br.senai.sp.informatica.clube.component.SecurityFacade;
 import br.senai.sp.informatica.clube.model.Autorizacao;
 import br.senai.sp.informatica.clube.model.Socio;
 import br.senai.sp.informatica.clube.repo.AutorizacaoRepo;
@@ -19,6 +21,8 @@ public class SocioService {
 	private SocioRepo repo;
 	@Autowired
 	private AutorizacaoRepo auth;
+	@Autowired
+	private SecurityFacade security;
 	
 	public void salvar(@Valid Socio socio) {
 		Socio old_socio;
@@ -30,7 +34,8 @@ public class SocioService {
 			old_socio = getSocio(socio.getNome());
 		}
 		 
-		auth.save(new Autorizacao(socio.getNome(), "ROLE_USER"));
+		auth.save(new Autorizacao(socio.getNome(), 
+				socio.isAdministrador() ?"ROLE_ADMIN" : "ROLE_USER"));
 		
 		if(old_socio != null) {
 			socio.setSenha(old_socio.getSenha());
@@ -41,15 +46,29 @@ public class SocioService {
 		repo.save(socio);
 	}
 
+	
 	public List<Socio> getSocios() {
-		return repo.findAll().stream()
+		return repo.findAll()
+				.stream().filter(socio -> socio.isAtivo())
 				.collect(Collectors.toList());
 	}	
 	
+	private Socio atribuiPerfil(Socio socio) {
+		Autorizacao autorizacao = getAutorizacao(socio.getNome());
+		if(autorizacao !=null) {
+			socio.setAdministrador(autorizacao.getPerfil().endsWith("ADMIN"));
+		}else {
+			socio.setAdministrador(false);
+		}
+		return socio;
+	}
 	public Socio getSocio(String nome) {
 		Socio socio = repo.findById(nome).orElse(null);
-		
+		if(socio !=null) {
+			socio= atribuiPerfil(socio);
+		}
 		return socio;
+		
 	}
 
 	public boolean removeSocio(String nome) {
@@ -67,7 +86,12 @@ public class SocioService {
 		}
 	}
 
-	private Autorizacao getAutorizacao(String nome) {
+	public Autorizacao getAutorizacao(String nome) {
 		return auth.findById(nome).orElse(null);
+	}
+	public GrantedAuthority getAutorizacoes(String nome) {
+		Autorizacao autorizacao =getAutorizacao(nome);
+		
+		return autorizacao != null? () -> autorizacao.getPerfil() : null;
 	}
 }
